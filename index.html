@@ -36,6 +36,7 @@
   button:active{transform:scale(.98)}
   button.primary{background:var(--hot);border-color:var(--hot);color:#fff;font-size:22px;padding:20px}
   .row{display:flex;gap:10px}.row>*{flex:1}
+  .row.pick>.arrow{flex:0 0 64px;font-size:22px;padding:0}
   input[type=text]{font:inherit;font-size:16px;width:100%;padding:12px 14px;border-radius:14px;background:rgba(0,0,0,.45);
     border:2px dashed rgba(255,255,255,.35);color:#fff;outline:none;text-align:center}
   input[type=text]::placeholder{color:rgba(255,255,255,.6)}
@@ -69,7 +70,11 @@
     <div id="idleUI">
       <input type="text" id="custom" placeholder="optional: type your own phrase" maxlength="60" autocomplete="off">
       <div style="height:10px"></div>
-      <button class="primary" id="go">🎤 Phrase</button>
+      <div class="row pick">
+        <button id="prev" class="arrow" aria-label="Previous phrase">◀</button>
+        <button class="primary" id="go">I'm Ready</button>
+        <button id="nextP" class="arrow" aria-label="Next phrase">▶</button>
+      </div>
     </div>
 
     <div id="doneUI" class="hide">
@@ -80,7 +85,7 @@
       <div style="height:10px"></div>
       <div class="row">
         <button id="retry">↺ Same phrase</button>
-        <button class="primary" id="next" style="font-size:18px;padding:15px">Next phrase</button>
+        <button class="primary" id="next" style="font-size:18px;padding:15px">Pick a phrase</button>
       </div>
     </div>
   </div>
@@ -105,7 +110,7 @@
       badge=$("badge"), prog=$("prog"), bar=$("bar"), custom=$("custom");
 
   var stream=null, actx=null, proc=null, recording=false, chunks=[], frames=[],
-      fwdBuf=null, revBuf=null, clipLen=0, runId=0, srcNode=null, idx=-1, phrase="";
+      fwdBuf=null, revBuf=null, clipLen=0, runId=0, srcNode=null, idx=0, phrase="";
 
   function setBadge(text, cls){
     badge.className = "badge" + (text ? " on" : "") + (cls ? " " + cls : "");
@@ -145,8 +150,7 @@
       src.connect(proc); proc.connect(mute); mute.connect(actx.destination);
 
       $("gate").classList.add("hide");
-      sub.textContent = "Tap the button, then say the phrase.";
-      ui("idle");
+      toIdle();
     }catch(e){
       $("gateErr").textContent = (e && e.name === "NotAllowedError")
         ? "Camera or microphone was blocked. Allow both for this site in your browser settings, then reload."
@@ -160,20 +164,26 @@
   }
 
   /* ---------- record ---------- */
-  function pickPhrase(advance){
+  function toIdle(){
     var c = custom.value.trim();
-    if(c) return c;
-    if(advance) idx = (idx + 1) % PHRASES.length;
-    return PHRASES[Math.max(0, idx)];
+    phrase = c || PHRASES[idx];
+    showPhrase();
+    sub.textContent = c ? "Your own phrase" : "Phrase " + (idx + 1) + " of " + PHRASES.length;
+    ui("idle");
+  }
+  function step(d){
+    custom.value = "";
+    idx = (idx + d + PHRASES.length) % PHRASES.length;
+    toIdle();
   }
 
-  async function record(advance){
+  async function record(){
     stopPlayback();
     frames.forEach(function(f){ if(f.img.close) f.img.close(); });
     frames = []; chunks = []; fwdBuf = revBuf = null;
     if(actx.state !== "running") actx.resume();
 
-    phrase = pickPhrase(advance);
+    phrase = custom.value.trim() || PHRASES[idx];
     showPhrase();
     sub.textContent = "Say it now!";
     ui("rec"); showCam(true); setBadge("● REC", "rec");
@@ -274,13 +284,14 @@
   function backToCam(){
     stopPlayback(); setBadge(""); showCam(true);
   }
-  $("go").onclick = function(){ record(true); };
+  $("go").onclick = function(){ record(); };
+  $("prev").onclick = function(){ step(-1); };
+  $("nextP").onclick = function(){ step(1); };
+  custom.oninput = toIdle;
   $("both").onclick = function(){ play(true); };
   $("revOnly").onclick = function(){ play(false); };
-  $("retry").onclick = function(){ backToCam(); record(false); };
-  $("next").onclick = function(){
-    backToCam(); phraseEl.textContent = ""; sub.textContent = "Tap the button, then say the phrase."; ui("idle");
-  };
+  $("retry").onclick = function(){ backToCam(); record(); };
+  $("next").onclick = function(){ backToCam(); toIdle(); };
 })();
 </script>
 </body>
