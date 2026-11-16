@@ -88,7 +88,9 @@
 
 <script>
 (function(){
-  var PHRASES = ["sigh name cuff","ooy vull ya","eem sick","oh-leh","eem ee-ram","nuff zee sith","say yes"];
+  var PHRASES = ["sigh name cuff","ooy vull ya","eem sick","oh-leh","eem ee-ram","nuff zee sith","say yes",
+    "Zull-GUMS ee-JUB eem TAW-rub","Ee-KISS a nik-UTCH me-ah","SIP uth NOT-EGG stell","SNAP eem TASH yah",
+    "STORSH yam TEE","A-JULB a TOE","Za-KAM muss NAW-wee-ah"];
   var SECONDS = 5, FPS = 15, MAX_W = 360;
 
   var $ = function(id){ return document.getElementById(id); };
@@ -145,6 +147,11 @@
     }
   };
 
+  function showPhrase(){
+    phraseEl.textContent = phrase;
+    phraseEl.style.fontSize = phrase.length > 24 ? "28px" : phrase.length > 15 ? "34px" : "";
+  }
+
   /* ---------- record ---------- */
   function pickPhrase(advance){
     var c = custom.value.trim();
@@ -160,7 +167,7 @@
     if(actx.state !== "running") actx.resume();
 
     phrase = pickPhrase(advance);
-    phraseEl.textContent = phrase;
+    showPhrase();
     sub.textContent = "Say it now!";
     ui("rec"); showCam(true); setBadge("● REC", "rec");
     prog.classList.add("on");
@@ -247,7 +254,7 @@
     var id = runId;
     if(actx.state !== "running") actx.resume();
     ui("play"); showCam(false);
-    phraseEl.textContent = phrase;
+    showPhrase();
     if(both){
       if(!(await pass(id, false))) return;
       await sleep(350); if(id !== runId) return;
