@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14101f">
+<title>Backtalk – say it, flip it</title>
+<style>
+  :root{ --bg:#14101f; --panel:#211a33; --ink:#f6f1ff; --dim:#a79cc4; --hot:#ff4f8b; --zap:#ffd23f; --line:#3a2f57; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+    font-family:ui-rounded,"SF Pro Rounded","Nunito",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  #app{position:fixed;inset:0;display:flex;justify-content:center;background:#000}
+  #stage{position:relative;width:100%;max-width:520px;height:100%;overflow:hidden;background:#000}
+  #cam,#cv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #cv{display:none}
+  .top{position:absolute;top:0;left:0;right:0;z-index:3;display:flex;justify-content:space-between;align-items:center;
+    padding:calc(12px + env(safe-area-inset-top)) 16px 26px;background:linear-gradient(rgba(0,0,0,.6),transparent)}
+  h1{margin:0;font-size:22px;font-weight:900;letter-spacing:-.5px}
+  h1 span{display:inline-block;transform:scaleX(-1);color:var(--hot)}
+  .badge{font-weight:900;font-size:13px;letter-spacing:1px;padding:6px 12px;border-radius:999px;background:var(--zap);color:#221;visibility:hidden}
+  .badge.on{visibility:visible}
+  .badge.rev,.badge.rec{background:var(--hot);color:#fff}
+  .bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;flex-direction:column;gap:10px;
+    padding:60px 16px calc(18px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.8))}
+  #phrase{text-align:center;font-weight:900;font-size:42px;line-height:1.05;color:var(--zap);
+    text-shadow:0 3px 14px rgba(0,0,0,.8);min-height:46px;word-break:break-word}
+  #sub{text-align:center;color:#fff;font-size:15px;min-height:20px;text-shadow:0 1px 6px #000}
+  .progress{height:10px;border-radius:99px;background:rgba(255,255,255,.25);overflow:hidden;visibility:hidden}
+  .progress.on{visibility:visible}
+  .progress i{display:block;height:100%;width:100%;background:var(--hot);transform-origin:left}
+  button{font:inherit;font-weight:800;font-size:18px;border-radius:18px;padding:15px 16px;cursor:pointer;color:var(--ink);
+    background:rgba(33,26,51,.9);border:2px solid var(--line);width:100%}
+  button:active{transform:scale(.98)}
+  button.primary{background:var(--hot);border-color:var(--hot);color:#fff;font-size:22px;padding:20px}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  input[type=text]{font:inherit;font-size:16px;width:100%;padding:12px 14px;border-radius:14px;background:rgba(0,0,0,.45);
+    border:2px dashed rgba(255,255,255,.35);color:#fff;outline:none;text-align:center}
+  input[type=text]::placeholder{color:rgba(255,255,255,.6)}
+  .hide{display:none!important}
+  #gate{position:absolute;inset:0;z-index:5;background:var(--bg);display:flex;flex-direction:column;justify-content:center;
+    gap:16px;padding:28px;text-align:center}
+  #gate p{color:var(--dim);margin:0;line-height:1.5}
+  #gateErr{color:var(--zap);min-height:20px}
+</style>
+</head>
+<body>
+<div id="app"><div id="stage">
+  <video id="cam" playsinline webkit-playsinline autoplay muted></video>
+  <canvas id="cv"></canvas>
+
+  <div class="top">
+    <h1>Back<span>talk</span></h1>
+    <div class="badge" id="badge"></div>
+  </div>
+
+  <div class="bottom">
+    <div id="phrase"></div>
+    <div id="sub"></div>
+    <div class="progress" id="prog"><i id="bar"></i></div>
+
+    <div id="idleUI">
+      <input type="text" id="custom" placeholder="optional: type your own phrase" maxlength="60" autocomplete="off">
+      <div style="height:10px"></div>
+      <button class="primary" id="go">🎤 Phrase</button>
+    </div>
+
+    <div id="doneUI" class="hide">
+      <div class="row">
+        <button id="both">▶ Both</button>
+        <button id="revOnly">◀ Reverse</button>
+      </div>
+      <div style="height:10px"></div>
+      <div class="row">
+        <button id="retry">↺ Same phrase</button>
+        <button class="primary" id="next" style="font-size:18px;padding:15px">Next phrase</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="gate">
+    <h1 style="font-size:40px">Back<span>talk</span></h1>
+    <p>Hit the phrase button, say what appears within 5 seconds, then hear yourself forwards… and backwards.</p>
+    <button class="primary" id="start">🤳 Turn on camera</button>
+    <div id="gateErr"></div>
+  </div>
+</div></div>
+
+<script>
+(function(){
+  var PHRASES = ["sigh name cuff","ooy vull ya","eem sick","oh-leh","eem ee-ram","nuff zee sith","say yes"];
+  var SECONDS = 5, FPS = 15, MAX_W = 360;
+
+  var $ = function(id){ return document.getElementById(id); };
+  var cam=$("cam"), cv=$("cv"), g=cv.getContext("2d"), phraseEl=$("phrase"), sub=$("sub"),
+      badge=$("badge"), prog=$("prog"), bar=$("bar"), custom=$("custom");
+
+  var stream=null, actx=null, proc=null, recording=false, chunks=[], frames=[],
+      fwdBuf=null, revBuf=null, clipLen=0, runId=0, srcNode=null, idx=-1, phrase="";
+
+  function setBadge(text, cls){
+    badge.className = "badge" + (text ? " on" : "") + (cls ? " " + cls : "");
+    badge.textContent = text || "";
+  }
+  function ui(mode){
+    $("idleUI").classList.toggle("hide", mode !== "idle");
+    $("doneUI").classList.toggle("hide", mode !== "done");
+  }
+  function showCam(on){
+    cam.style.display = on ? "block" : "none";
+    cv.style.display = on ? "none" : "block";
+  }
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+
+  /* ---------- camera + mic ---------- */
+  $("start").onclick = async function(){
+    $("gateErr").textContent = "";
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      $("gateErr").textContent = "This browser can't use the camera here. Open the page in Safari or Chrome.";
+      return;
+    }
+    try{
+      var AC = window.AudioContext || window.webkitAudioContext;
+      actx = actx || new AC();
+      actx.resume();
+      stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"user" }, audio:true });
+      cam.srcObject = stream;
+      await cam.play().catch(function(){});
+
+      var src = actx.createMediaStreamSource(stream);
+      proc = actx.createScriptProcessor(4096, 1, 1);
+      var mute = actx.createGain(); mute.gain.value = 0;
+      proc.onaudioprocess = function(e){
+        if(recording) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      };
+      src.connect(proc); proc.connect(mute); mute.connect(actx.destination);
+
+      $("gate").classList.add("hide");
+      sub.textContent = "Tap the button, then say the phrase.";
+      ui("idle");
+    }catch(e){
+      $("gateErr").textContent = (e && e.name === "NotAllowedError")
+        ? "Camera or microphone was blocked. Allow both for this site in your browser settings, then reload."
+        : "Couldn't start the camera and microphone (" + ((e && e.name) || "error") + ").";
+    }
+  };
+
+  /* ---------- record ---------- */
+  function pickPhrase(advance){
+    var c = custom.value.trim();
+    if(c) return c;
+    if(advance) idx = (idx + 1) % PHRASES.length;
+    return PHRASES[Math.max(0, idx)];
+  }
+
+  async function record(advance){
+    stopPlayback();
+    frames.forEach(function(f){ if(f.img.close) f.img.close(); });
+    frames = []; chunks = []; fwdBuf = revBuf = null;
+    if(actx.state !== "running") actx.resume();
+
+    phrase = pickPhrase(advance);
+    phraseEl.textContent = phrase;
+    sub.textContent = "Say it now!";
+    ui("rec"); showCam(true); setBadge("● REC", "rec");
+    prog.classList.add("on");
+
+    var vw = cam.videoWidth || 360, vh = cam.videoHeight || 480, s = Math.min(1, MAX_W / vw);
+    cv.width = Math.round(vw * s); cv.height = Math.round(vh * s);
+
+    var t0 = performance.now(), nextShot = 0;
+    recording = true;
+    await new Promise(function(done){
+      (function tick(){
+        var t = (performance.now() - t0) / 1000;
+        bar.style.transform = "scaleX(" + Math.max(0, 1 - t / SECONDS) + ")";
+        if(t >= SECONDS) return done();
+        if(t >= nextShot){
+          nextShot += 1 / FPS;
+          g.drawImage(cam, 0, 0, cv.width, cv.height);
+          var stamp = t;
+          if(window.createImageBitmap){
+            createImageBitmap(cv).then(function(b){ frames.push({ t:stamp, img:b }); });
+          }else{
+            var c2 = document.createElement("canvas"); c2.width = cv.width; c2.height = cv.height;
+            c2.getContext("2d").drawImage(cv, 0, 0);
+            frames.push({ t:stamp, img:c2 });
+          }
+        }
+        requestAnimationFrame(tick);
+      })();
+    });
+    recording = false;
+    prog.classList.remove("on");
+    await sleep(60);
+    frames.sort(function(a, b){ return a.t - b.t; });
+
+    var total = 0; chunks.forEach(function(c){ total += c.length; });
+    if(total > 0){
+      fwdBuf = actx.createBuffer(1, total, actx.sampleRate);
+      revBuf = actx.createBuffer(1, total, actx.sampleRate);
+      var f = fwdBuf.getChannelData(0), r = revBuf.getChannelData(0), o = 0;
+      chunks.forEach(function(c){ f.set(c, o); o += c.length; });
+      for(var i = 0; i < total; i++) r[i] = f[total - 1 - i];
+      clipLen = total / actx.sampleRate;
+    }else{
+      clipLen = SECONDS;
+    }
+    chunks = [];
+    play(true);
+  }
+
+  /* ---------- playback ---------- */
+  function stopPlayback(){
+    runId++;
+    if(srcNode){ try{ srcNode.stop(); }catch(e){} srcNode = null; }
+  }
+  function frameAt(t){
+    var lo = 0, hi = frames.length - 1;
+    while(lo < hi){ var m = (lo + hi + 1) >> 1; if(frames[m].t <= t) lo = m; else hi = m - 1; }
+    return frames[lo];
+  }
+  function pass(id, reverse){
+    return new Promise(function(res){
+      setBadge(reverse ? "◀◀ REVERSE" : "FORWARD ▶", reverse ? "rev" : "");
+      sub.textContent = reverse ? "…and backwards" : "What you said";
+      var buf = reverse ? revBuf : fwdBuf, start = actx.currentTime + 0.06;
+      if(buf){
+        srcNode = actx.createBufferSource();
+        srcNode.buffer = buf; srcNode.connect(actx.destination); srcNode.start(start);
+      }
+      var last = null;
+      (function tick(){
+        if(id !== runId) return res(false);
+        var t = actx.currentTime - start;
+        if(t >= clipLen) return res(true);
+        if(t >= 0 && frames.length){
+          var fr = frameAt(reverse ? clipLen - t : t);
+          if(fr !== last){ g.drawImage(fr.img, 0, 0, cv.width, cv.height); last = fr; }
+        }
+        requestAnimationFrame(tick);
+      })();
+    });
+  }
+  async function play(both){
+    stopPlayback();
+    var id = runId;
+    if(actx.state !== "running") actx.resume();
+    ui("play"); showCam(false);
+    phraseEl.textContent = phrase;
+    if(both){
+      if(!(await pass(id, false))) return;
+      await sleep(350); if(id !== runId) return;
+    }
+    if(!(await pass(id, true))) return;
+    setBadge(""); sub.textContent = fwdBuf ? "" : "No sound was captured – check the mic permission.";
+    ui("done");
+  }
+
+  function backToCam(){
+    stopPlayback(); setBadge(""); showCam(true);
+  }
+  $("go").onclick = function(){ record(true); };
+  $("both").onclick = function(){ play(true); };
+  $("revOnly").onclick = function(){ play(false); };
+  $("retry").onclick = function(){ backToCam(); record(false); };
+  $("next").onclick = function(){
+    backToCam(); phraseEl.textContent = ""; sub.textContent = "Tap the button, then say the phrase."; ui("idle");
+  };
+})();
+</script>
+</body>
+</html>
