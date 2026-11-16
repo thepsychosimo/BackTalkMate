@@ -11,7 +11,8 @@
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
     font-family:ui-rounded,"SF Pro Rounded","Nunito",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
   #app{position:fixed;inset:0;display:flex;justify-content:center;background:#000}
-  #stage{position:relative;width:100%;max-width:520px;height:100%;overflow:hidden;background:#000}
+  #stage{position:relative;width:100%;max-width:520px;height:100%;overflow:hidden;background:var(--bg);display:flex;flex-direction:column}
+  #view{position:relative;flex:1;min-height:0;overflow:hidden;background:#000}
   #cam,#cv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
   #cv{display:none}
   .top{position:absolute;top:0;left:0;right:0;z-index:3;display:flex;justify-content:space-between;align-items:center;
@@ -21,10 +22,11 @@
   .badge{font-weight:900;font-size:13px;letter-spacing:1px;padding:6px 12px;border-radius:999px;background:var(--zap);color:#221;visibility:hidden}
   .badge.on{visibility:visible}
   .badge.rev,.badge.rec{background:var(--hot);color:#fff}
-  .bottom{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;flex-direction:column;gap:10px;
-    padding:60px 16px calc(18px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.8))}
-  #phrase{text-align:center;font-weight:900;font-size:42px;line-height:1.05;color:var(--zap);
-    text-shadow:0 3px 14px rgba(0,0,0,.8);min-height:46px;word-break:break-word}
+  .caption{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;flex-direction:column;gap:8px;
+    padding:40px 16px 12px;background:linear-gradient(transparent,rgba(0,0,0,.75))}
+  .bottom{flex:none;min-height:calc(152px + env(safe-area-inset-bottom));padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:var(--bg)}
+  #phrase{text-align:center;font-weight:900;font-size:38px;line-height:1.05;color:var(--zap);
+    text-shadow:0 3px 14px rgba(0,0,0,.8);word-break:break-word}
   #sub{text-align:center;color:#fff;font-size:15px;min-height:20px;text-shadow:0 1px 6px #000}
   .progress{height:10px;border-radius:99px;background:rgba(255,255,255,.25);overflow:hidden;visibility:hidden}
   .progress.on{visibility:visible}
@@ -46,6 +48,7 @@
 </head>
 <body>
 <div id="app"><div id="stage">
+  <div id="view">
   <video id="cam" playsinline webkit-playsinline autoplay muted></video>
   <canvas id="cv"></canvas>
 
@@ -54,10 +57,14 @@
     <div class="badge" id="badge"></div>
   </div>
 
-  <div class="bottom">
+  <div class="caption">
     <div id="phrase"></div>
     <div id="sub"></div>
     <div class="progress" id="prog"><i id="bar"></i></div>
+  </div>
+  </div>
+
+  <div class="bottom">
 
     <div id="idleUI">
       <input type="text" id="custom" placeholder="optional: type your own phrase" maxlength="60" autocomplete="off">
